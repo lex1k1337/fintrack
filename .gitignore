@@ -1,0 +1,22 @@
+# Python / SQLite / PyInstaller
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite
+*.sqlite3
+build/
+dist/
+*.spec
+
+# Android / Gradle
+.gradle/
+local.properties
+*.iml
+.idea/
+android/app/build/
+android/build/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

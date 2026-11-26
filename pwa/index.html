@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b0f17" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <title>FinTrack — Учёт личных финансов</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Боковая панель -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">💎</div>
+        <div>
+          <div class="brand-name">FinTrack</div>
+          <div class="brand-sub">Личные финансы</div>
+        </div>
+      </div>
+
+      <nav class="nav" id="mainNav">
+        <button class="nav-item active" data-tab="dashboard">
+          <span class="nav-icon">📊</span>
+          <span>Дашборд</span>
+        </button>
+        <button class="nav-item" data-tab="transactions">
+          <span class="nav-icon">🧾</span>
+          <span>Операции</span>
+        </button>
+        <button class="nav-item" data-tab="manage">
+          <span class="nav-icon">🗂️</span>
+          <span>Счета и категории</span>
+        </button>
+        <button class="nav-item" data-tab="settings">
+          <span class="nav-icon">⚙️</span>
+          <span>Данные и настройки</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="btn btn-primary btn-block" id="btnNewTxSidebar">
+          <span>＋</span> Добавить операцию
+        </button>
+      </div>
+    </aside>
+
+    <!-- Основной контент -->
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <h1 class="page-title" id="pageTitle">Дашборд</h1>
+          <div class="period-bar" id="periodBar">
+            <select id="periodPreset" class="select-pill" aria-label="Период">
+              <option value="this_month">Этот месяц</option>
+              <option value="last_month">Прошлый месяц</option>
+              <option value="last_3m">Последние 3 месяца</option>
+              <option value="this_year">Этот год</option>
+              <option value="all">Всё время</option>
+              <option value="custom">Свой период</option>
+            </select>
+            <div class="custom-dates hidden" id="customDates">
+              <input type="date" id="dateFrom" class="input-pill" />
+              <span>—</span>
+              <input type="date" id="dateTo" class="input-pill" />
+            </div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn-icon" id="btnTheme" title="Переключить тему" aria-label="Переключить тему">☀️</button>
+          <button class="btn btn-primary" id="btnNewTxTop">＋ Операция</button>
+        </div>
+      </header>
+
+      <!-- Вкладка: Дашборд -->
+      <section class="tab-panel active" id="tab-dashboard">
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label">Общий баланс</div>
+            <div class="kpi-value" id="kpiBalance">0 ₽</div>
+            <div class="kpi-sub">По всем счетам</div>
+          </div>
+          <div class="kpi-card kpi-income">
+            <div class="kpi-label">Доходы</div>
+            <div class="kpi-value" id="kpiIncome">0 ₽</div>
+            <div class="kpi-sub" id="kpiIncomeSub">За выбранный период</div>
+          </div>
+          <div class="kpi-card kpi-expense">
+            <div class="kpi-label">Расходы</div>
+            <div class="kpi-value" id="kpiExpense">0 ₽</div>
+            <div class="kpi-sub" id="kpiExpenseSub">За выбранный период</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Дельта / Сбережения</div>
+            <div class="kpi-value" id="kpiNet">0 ₽</div>
+            <div class="kpi-sub" id="kpiSavingsRate">Норма сбережений: 0%</div>
+          </div>
+        </div>
+
+        <div class="accounts-strip" id="dashboardAccounts"></div>
+
+        <div class="charts-grid">
+          <div class="card">
+            <div class="card-header">
+              <h2>Структура по категориям</h2>
+              <div class="segmented" id="donutMode">
+                <button class="seg-btn active" data-mode="expense">Расходы</button>
+                <button class="seg-btn" data-mode="income">Доходы</button>
+              </div>
+            </div>
+            <div class="donut-layout" id="donutContainer"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2>Динамика по месяцам</h2>
+              <div class="legend-inline">
+                <span class="dot income"></span> Доходы
+                <span class="dot expense"></span> Расходы
+              </div>
+            </div>
+            <div class="bar-chart-wrap" id="barChartContainer"></div>
+          </div>
+        </div>
+
+        <div class="dashboard-bottom">
+          <div class="card">
+            <div class="card-header">
+              <h2>Бюджеты категорий</h2>
+              <button class="btn-link" data-goto="manage">Настроить лимиты</button>
+            </div>
+            <div id="budgetsList" class="budgets-list"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2>Последние операции</h2>
+              <button class="btn-link" data-goto="transactions">Все операции →</button>
+            </div>
+            <div id="recentTxList" class="tx-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Вкладка: Операции -->
+      <section class="tab-panel" id="tab-transactions">
+        <div class="card filters-card">
+          <div class="filters-grid">
+            <input type="search" id="filterSearch" class="input" placeholder="Поиск по комментарию, категории или сумме..." />
+            <select id="filterType" class="select">
+              <option value="">Все типы</option>
+              <option value="expense">Расходы</option>
+              <option value="income">Доходы</option>
+              <option value="transfer">Переводы</option>
+            </select>
+            <select id="filterCategory" class="select">
+              <option value="">Все категории</option>
+            </select>
+            <select id="filterAccount" class="select">
+              <option value="">Все счета</option>
+            </select>
+            <select id="filterSort" class="select">
+              <option value="date_desc">Сначала новые</option>
+              <option value="date_asc">Сначала старые</option>
+              <option value="amount_desc">Сначала крупные</option>
+              <option value="amount_asc">Сначала мелкие</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2>История операций <span class="badge" id="txCountBadge">0</span></h2>
+            <div class="tx-totals-inline" id="txFilteredTotals"></div>
+          </div>
+          <div id="allTxList" class="tx-list"></div>
+        </div>
+      </section>
+
+      <!-- Вкладка: Счета и категории -->
+      <section class="tab-panel" id="tab-manage">
+        <div class="manage-grid">
+          <div class="card">
+            <div class="card-header">
+              <h2>Счета и кошельки</h2>
+              <button class="btn btn-sm btn-primary" id="btnAddAccount">＋ Счёт</button>
+            </div>
+            <div id="accountsManageList" class="manage-list"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2>Категории и бюджеты</h2>
+              <button class="btn btn-sm btn-primary" id="btnAddCategory">＋ Категория</button>
+            </div>
+            <div id="categoriesManageList" class="manage-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Вкладка: Настройки и данные -->
+      <section class="tab-panel" id="tab-settings">
+        <div class="settings-grid">
+          <div class="card">
+            <h2>Основные настройки</h2>
+            <div class="form-group">
+              <label for="settingCurrency">Валюта отображения</label>
+              <select id="settingCurrency" class="select">
+                <option value="₽">₽ — Российский рубль (RUB)</option>
+                <option value="$">$ — Доллар США (USD)</option>
+                <option value="€">€ — Евро (EUR)</option>
+                <option value="₸">₸ — Казахстанский тенге (KZT)</option>
+                <option value="BYN">BYN — Белорусский рубль</option>
+                <option value="£">£ — Фунт стерлингов (GBP)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Тема оформления</label>
+              <div class="segmented" id="themeSegmented">
+                <button class="seg-btn" data-theme-val="dark">🌙 Тёмная</button>
+                <button class="seg-btn" data-theme-val="light">☀️ Светлая</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Экспорт и резервное копирование</h2>
+            <p class="muted">Ваши данные хранятся локально на устройстве. Вы можете экспортировать их в CSV или сделать резервную копию JSON.</p>
+            <div class="btn-row">
+              <button type="button" class="btn btn-secondary" id="btnExportCsv">📥 Экспорт CSV</button>
+              <button type="button" class="btn btn-secondary" id="btnExportJson">💾 Экспорт JSON</button>
+            </div>
+            <div class="divider"></div>
+            <div class="form-group">
+              <label>Восстановить из JSON-бэкапа</label>
+              <input type="file" id="importJsonInput" accept=".json,application/json" class="input" />
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Демо-данные и сброс</h2>
+            <p class="muted">Хотите сразу посмотреть графики и аналитику? Загрузите тестовые операции за 3 месяца или сбросьте базу к чистому состоянию.</p>
+            <div class="btn-row">
+              <button class="btn btn-secondary" id="btnLoadDemo">✨ Загрузить демо-данные</button>
+              <button class="btn btn-danger" id="btnResetAll">🗑️ Сбросить все данные</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Мобильная нижняя навигация -->
+  <nav class="mobile-nav" id="mobileNav">
+    <button class="mobile-nav-item active" data-tab="dashboard">📊<span>Дашборд</span></button>
+    <button class="mobile-nav-item" data-tab="transactions">🧾<span>Операции</span></button>
+    <button class="mobile-nav-item" data-tab="manage">🗂️<span>Счета</span></button>
+    <button class="mobile-nav-item" data-tab="settings">⚙️<span>Ещё</span></button>
+  </nav>
+
+  <!-- Модалка: Операция -->
+  <div class="modal-backdrop hidden" id="txModal">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="txModalTitle">Новая операция</h3>
+        <button class="btn-icon" data-close-modal="txModal">✕</button>
+      </div>
+      <form id="txForm">
+        <input type="hidden" id="txId" />
+        <div class="segmented segmented-full" id="txTypeSwitch">
+          <button type="button" class="seg-btn active" data-tx-type="expense">Расход</button>
+          <button type="button" class="seg-btn" data-tx-type="income">Доход</button>
+          <button type="button" class="seg-btn" data-tx-type="transfer">Перевод</button>
+        </div>
+
+        <div class="form-group">
+          <label for="txAmount">Сумма</label>
+          <input type="number" id="txAmount" class="input input-lg" step="0.01" min="0.01" placeholder="0.00" required />
+        </div>
+
+        <div class="form-row">
+          <div class="form-group" id="txCategoryGroup">
+            <label for="txCategory">Категория</label>
+            <select id="txCategory" class="select"></select>
+          </div>
+          <div class="form-group">
+            <label for="txAccount" id="txAccountLabel">Счёт</label>
+            <select id="txAccount" class="select" required></select>
+          </div>
+          <div class="form-group hidden" id="txToAccountGroup">
+            <label for="txToAccount">На счёт</label>
+            <select id="txToAccount" class="select"></select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="txDate">Дата</label>
+            <input type="date" id="txDate" class="input" required />
+          </div>
+          <div class="form-group">
+            <label for="txNote">Комментарий</label>
+            <input type="text" id="txNote" class="input" maxlength="300" placeholder="Например: Кофе с собой" />
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-danger hidden" id="btnDeleteTx">Удалить</button>
+          <div class="spacer"></div>
+          <button type="button" class="btn btn-secondary" data-close-modal="txModal">Отмена</button>
+          <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Модалка: Счёт -->
+  <div class="modal-backdrop hidden" id="accountModal">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="accModalTitle">Новый счёт</h3>
+        <button class="btn-icon" data-close-modal="accountModal">✕</button>
+      </div>
+      <form id="accountForm">
+        <input type="hidden" id="accId" />
+        <div class="form-group">
+          <label for="accName">Название</label>
+          <input type="text" id="accName" class="input" required placeholder="Например: Тинькофф Black" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="accType">Тип счёта</label>
+            <select id="accType" class="select">
+              <option value="card">Карта</option>
+              <option value="cash">Наличные</option>
+              <option value="savings">Накопления</option>
+              <option value="other">Другое</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="accInitial">Начальный баланс</label>
+            <input type="number" id="accInitial" class="input" step="0.01" value="0" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="accIcon">Иконка (эмодзи)</label>
+            <input type="text" id="accIcon" class="input" maxlength="4" value="💳" />
+          </div>
+          <div class="form-group">
+            <label for="accColor">Цвет</label>
+            <input type="color" id="accColor" class="input input-color" value="#3b82f6" />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-close-modal="accountModal">Отмена</button>
+          <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Модалка: Категория -->
+  <div class="modal-backdrop hidden" id="categoryModal">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="catModalTitle">Новая категория</h3>
+        <button class="btn-icon" data-close-modal="categoryModal">✕</button>
+      </div>
+      <form id="categoryForm">
+        <input type="hidden" id="catId" />
+        <div class="form-row">
+          <div class="form-group">
+            <label for="catName">Название</label>
+            <input type="text" id="catName" class="input" required placeholder="Например: Спорт" />
+          </div>
+          <div class="form-group" id="catTypeGroup">
+            <label for="catType">Тип</label>
+            <select id="catType" class="select">
+              <option value="expense">Расход</option>
+              <option value="income">Доход</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="catIcon">Иконка (эмодзи)</label>
+            <input type="text" id="catIcon" class="input" maxlength="4" value="📦" />
+          </div>
+          <div class="form-group">
+            <label for="catColor">Цвет</label>
+            <input type="color" id="catColor" class="input input-color" value="#3b82f6" />
+          </div>
+        </div>
+        <div class="form-group" id="catBudgetGroup">
+          <label for="catBudget">Месячный лимит бюджета (0 = без лимита)</label>
+          <input type="number" id="catBudget" class="input" step="100" min="0" value="0" />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-close-modal="categoryModal">Отмена</button>
+          <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+  <script src="local_db.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
