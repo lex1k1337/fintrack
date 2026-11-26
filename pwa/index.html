@@ -247,6 +247,28 @@
               <button class="btn btn-danger" id="btnResetAll">🗑️ Сбросить все данные</button>
             </div>
           </div>
+
+          <div class="card">
+            <h2>Облачная синхронизация (GitHub Gist)</h2>
+            <p class="muted">Хранит бэкап в твоём приватном GitHub Gist. Введи один и тот же токен на ПК и на телефоне — ID найдётся автоматически.</p>
+            <div class="form-group">
+              <label for="settingGistToken">GitHub Token (с правом <code>gist</code>)</label>
+              <input type="password" id="settingGistToken" class="input" placeholder="ghp_... или github_pat_..." autocomplete="off" />
+            </div>
+            <div class="form-group">
+              <label for="settingGistId">Gist ID (оставь пустым — найдётся или создастся сам)</label>
+              <input type="text" id="settingGistId" class="input" placeholder="Автоматически" />
+            </div>
+            <div class="form-group" style="flex-direction:row;align-items:center;gap:8px;">
+              <input type="checkbox" id="settingGistAutosync" style="width:auto;" />
+              <label for="settingGistAutosync" style="margin:0;cursor:pointer;">Автовыгрузка в облако после изменений</label>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn btn-secondary" id="btnSyncSave">💾 Сохранить токен</button>
+              <button type="button" class="btn btn-primary" id="btnSyncPush">☁️ Выгрузить</button>
+              <button type="button" class="btn btn-secondary" id="btnSyncPull">⬇️ Загрузить</button>
+            </div>
+          </div>
         </div>
       </section>
     </main>

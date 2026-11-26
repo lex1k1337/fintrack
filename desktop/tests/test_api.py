@@ -175,6 +175,19 @@ class FinTrackAPITests(unittest.TestCase):
         self.assertEqual(st, 200)
         self.assertEqual(imp["imported"]["transactions"], demo["inserted"])
 
+    def test_sync_validation_and_token_privacy(self):
+        # Без токена синк возвращает 400
+        st, _ = self._req("POST", "/api/sync/push", {})
+        self.assertEqual(st, 400)
+
+        # Токен сохраняется в settings, но не утекает в экспорт JSON
+        st, settings = self._req("PUT", "/api/settings", {"gist_token": "secret_tok_123", "gist_autosync": "true"})
+        self.assertEqual(st, 200)
+        self.assertEqual(settings["gist_token"], "secret_tok_123")
+
+        _, backup = self._req("GET", "/api/export/json")
+        self.assertNotIn("gist_token", backup["settings"])
+
 
 if __name__ == "__main__":
     unittest.main()

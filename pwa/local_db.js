@@ -269,6 +269,71 @@
     return inserted;
   }
 
+  async function gistRequest(method, url, token, payload) {
+    const res = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+      },
+      body: payload ? JSON.stringify(payload) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(`Ошибка GitHub API (${res.status}): ${data.message || "Неизвестная ошибка"}`);
+    }
+    return data;
+  }
+
+  async function findFinTrackGist(token) {
+    const gists = await gistRequest("GET", "https://api.github.com/gists?per_page=30", token);
+    const found = gists.find((g) => g.files && g.files["fintrack-backup.json"]);
+    return found ? String(found.id) : null;
+  }
+
+  async function gistPush(db) {
+    const token = (db.settings.gist_token || "").trim();
+    if (!token) throw new Error("Укажите GitHub Token в настройках синхронизации.");
+    let gistId = (db.settings.gist_id || "").trim() || (await findFinTrackGist(token));
+    const body = {
+      description: "FinTrack Cloud Backup",
+      public: false,
+      files: { "fintrack-backup.json": { content: window.LocalFinanceAPI.exportJSON() } },
+    };
+    let res;
+    if (gistId) {
+      res = await gistRequest("PATCH", `https://api.github.com/gists/${gistId}`, token, body);
+    } else {
+      res = await gistRequest("POST", "https://api.github.com/gists", token, body);
+      gistId = String(res.id);
+      db.settings.gist_id = gistId;
+      saveDB(db);
+    }
+    return { gist_id: gistId, updated_at: res.updated_at };
+  }
+
+  async function gistPull(db) {
+    const token = (db.settings.gist_token || "").trim();
+    if (!token) throw new Error("Укажите GitHub Token в настройках синхронизации.");
+    const gistId = (db.settings.gist_id || "").trim() || (await findFinTrackGist(token));
+    if (!gistId) {
+      throw new Error("Облачный бэкап FinTrack не найден. Сначала выгрузите данные с одного из устройств.");
+    }
+    const res = await gistRequest("GET", `https://api.github.com/gists/${gistId}`, token);
+    const file = res.files && res.files["fintrack-backup.json"];
+    if (!file || !file.content) throw new Error("В Gist отсутствует файл fintrack-backup.json.");
+    const payload = JSON.parse(file.content);
+    const imp = await window.LocalFinanceAPI.handle("/api/import/json", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    const freshDb = loadDB();
+    freshDb.settings.gist_id = gistId;
+    saveDB(freshDb);
+    return { gist_id: gistId, imported: imp.imported, updated_at: res.updated_at };
+  }
+
   window.LocalFinanceAPI = {
     async handle(url, options = {}) {
       const method = (options.method || "GET").toUpperCase();
@@ -287,8 +352,11 @@
         };
       }
       if (method === "PUT" && path === "/api/settings") {
-        if (body.currency) db.settings.currency = String(body.currency);
-        if (body.theme) db.settings.theme = String(body.theme);
+        if (body.currency !== undefined) db.settings.currency = String(body.currency);
+        if (body.theme !== undefined) db.settings.theme = String(body.theme);
+        if (body.gist_token !== undefined) db.settings.gist_token = String(body.gist_token).trim();
+        if (body.gist_id !== undefined) db.settings.gist_id = String(body.gist_id).trim();
+        if (body.gist_autosync !== undefined) db.settings.gist_autosync = String(body.gist_autosync);
         saveDB(db);
         return db.settings;
       }
@@ -399,8 +467,16 @@
           throw new Error("Некорректный формат JSON-бэкапа.");
         }
         const maxId = (arr) => arr.reduce((m, x) => Math.max(m, Number(x.id || 0)), 0) + 1;
+        const mergedSettings = {
+          ...(body.settings || {}),
+          currency: body.settings?.currency || db.settings.currency,
+          theme: body.settings?.theme || db.settings.theme,
+          gist_token: db.settings.gist_token || "",
+          gist_id: db.settings.gist_id || "",
+          gist_autosync: db.settings.gist_autosync || "false",
+        };
         const imported = {
-          settings: body.settings || db.settings,
+          settings: mergedSettings,
           accounts: body.accounts,
           categories: body.categories,
           transactions: body.transactions,
@@ -413,6 +489,12 @@
         saveDB(imported);
         return { imported: { transactions: body.transactions.length } };
       }
+      if (method === "POST" && path === "/api/sync/push") {
+        return await gistPush(db);
+      }
+      if (method === "POST" && path === "/api/sync/pull") {
+        return await gistPull(db);
+      }
       throw new Error("Неизвестный запрос: " + path);
     },
 
@@ -422,7 +504,7 @@
         {
           version: 1,
           exported_at: new Date().toISOString(),
-          settings: db.settings,
+          settings: { currency: db.settings.currency, theme: db.settings.theme },
           accounts: db.accounts,
           categories: db.categories,
           transactions: db.transactions,

@@ -120,6 +120,11 @@ async function refreshAll() {
 
   applyTheme(state.settings.theme || "dark");
   $("settingCurrency").value = state.settings.currency || "₽";
+  if ($("settingGistToken")) {
+    $("settingGistToken").value = state.settings.gist_token || "";
+    $("settingGistId").value = state.settings.gist_id || "";
+    $("settingGistAutosync").checked = state.settings.gist_autosync === "true";
+  }
 
   renderDashboard();
   renderTransactions();
@@ -673,6 +678,7 @@ function initEvents() {
       }
       closeModal("txModal");
       await refreshAll();
+      maybeAutoSync();
     } catch (err) {
       toast(err.message, "error");
     }
@@ -686,6 +692,7 @@ function initEvents() {
       toast("Операция удалена", "success");
       closeModal("txModal");
       await refreshAll();
+      maybeAutoSync();
     } catch (err) {
       toast(err.message, "error");
     }
@@ -838,6 +845,69 @@ function initEvents() {
     try {
       await api("/api/reset", { method: "POST" });
       toast("Данные сброшены", "success");
+      await refreshAll();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+
+  // Cloud Sync (GitHub Gist)
+  function maybeAutoSync() {
+    if (state.settings.gist_autosync === "true" && state.settings.gist_token) {
+      api("/api/sync/push", { method: "POST" }).catch(() => {});
+    }
+  }
+
+  $("btnSyncSave").addEventListener("click", async () => {
+    try {
+      await api("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          gist_token: $("settingGistToken").value.trim(),
+          gist_id: $("settingGistId").value.trim(),
+          gist_autosync: $("settingGistAutosync").checked ? "true" : "false",
+        }),
+      });
+      toast("Настройки синхронизации сохранены", "success");
+      await refreshAll();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+
+  $("btnSyncPush").addEventListener("click", async () => {
+    try {
+      await api("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          gist_token: $("settingGistToken").value.trim(),
+          gist_id: $("settingGistId").value.trim(),
+          gist_autosync: $("settingGistAutosync").checked ? "true" : "false",
+        }),
+      });
+      toast("Выгрузка в облако...", "info");
+      const res = await api("/api/sync/push", { method: "POST" });
+      toast("Успешно выгружено в GitHub Gist", "success");
+      if (res.gist_id) $("settingGistId").value = res.gist_id;
+      await refreshAll();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+
+  $("btnSyncPull").addEventListener("click", async () => {
+    try {
+      await api("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          gist_token: $("settingGistToken").value.trim(),
+          gist_id: $("settingGistId").value.trim(),
+          gist_autosync: $("settingGistAutosync").checked ? "true" : "false",
+        }),
+      });
+      toast("Загрузка из облака...", "info");
+      const res = await api("/api/sync/pull", { method: "POST" });
+      toast(`Загружено операций: ${res.imported.transactions}`, "success");
       await refreshAll();
     } catch (err) {
       toast(err.message, "error");

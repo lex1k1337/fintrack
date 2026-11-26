@@ -17,7 +17,9 @@ import re
 import sqlite3
 import sys
 import threading
+import urllib.error
 import urllib.parse
+import urllib.request
 import webbrowser
 from contextlib import contextmanager
 from http import HTTPStatus
@@ -159,13 +161,13 @@ class FinanceDB:
             return {r["key"]: r["value"] for r in rows}
 
     def update_settings(self, updates: dict[str, Any]) -> dict[str, str]:
-        allowed = {"currency", "theme"}
+        allowed = {"currency", "theme", "gist_token", "gist_id", "gist_autosync"}
         with self._lock, self._connect() as conn:
             for k, v in updates.items():
                 if k in allowed and v is not None:
                     conn.execute(
                         "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                        (k, str(v).strip()[:16]),
+                        (k, str(v).strip()[:256]),
                     )
         return self.get_settings()
 
@@ -576,10 +578,11 @@ class FinanceDB:
     # ---------- Export / Import / Demo ----------
     def export_json(self) -> dict[str, Any]:
         with self._lock, self._connect() as conn:
+            safe_settings = {k: v for k, v in self.get_settings().items() if k in {"currency", "theme"}}
             return {
                 "version": 1,
                 "exported_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-                "settings": self.get_settings(),
+                "settings": safe_settings,
                 "accounts": [dict(r) for r in conn.execute("SELECT * FROM accounts ORDER BY id").fetchall()],
                 "categories": [dict(r) for r in conn.execute("SELECT * FROM categories ORDER BY id").fetchall()],
                 "transactions": [dict(r) for r in conn.execute("SELECT * FROM transactions ORDER BY id").fetchall()],
@@ -747,6 +750,78 @@ class FinanceDB:
             conn.execute("DELETE FROM accounts")
             self._seed_defaults(conn)
 
+    # ---------- GitHub Gist Cloud Sync ----------
+    def _gist_request(self, method: str, url: str, token: str, payload: dict[str, Any] | None = None) -> Any:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
+        req = urllib.request.Request(
+            url,
+            data=data,
+            method=method,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "Content-Type": "application/json",
+                "User-Agent": "FinTrack-App",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as err:
+            msg = err.read().decode("utf-8", errors="replace")
+            try:
+                msg = json.loads(msg).get("message", msg)
+            except Exception:
+                pass
+            raise ValueError(f"Ошибка GitHub API ({err.code}): {msg}")
+        except Exception as exc:
+            raise ValueError(f"Ошибка сети при обращении к GitHub: {exc}")
+
+    def _find_fintrack_gist(self, token: str) -> str | None:
+        gists = self._gist_request("GET", "https://api.github.com/gists?per_page=30", token)
+        for g in gists:
+            files = g.get("files") or {}
+            if "fintrack-backup.json" in files:
+                return str(g["id"])
+        return None
+
+    def sync_push(self) -> dict[str, Any]:
+        s = self.get_settings()
+        token = (s.get("gist_token") or "").strip()
+        if not token:
+            raise ValueError("Укажите GitHub Token в настройках синхронизации.")
+        gist_id = (s.get("gist_id") or "").strip() or self._find_fintrack_gist(token)
+        content = json.dumps(self.export_json(), ensure_ascii=False, indent=2)
+        body = {
+            "description": "FinTrack Cloud Backup",
+            "public": False,
+            "files": {"fintrack-backup.json": {"content": content}},
+        }
+        if gist_id:
+            res = self._gist_request("PATCH", f"https://api.github.com/gists/{gist_id}", token, body)
+        else:
+            res = self._gist_request("POST", "https://api.github.com/gists", token, body)
+            gist_id = str(res["id"])
+            self.update_settings({"gist_id": gist_id})
+        return {"gist_id": gist_id, "updated_at": res.get("updated_at")}
+
+    def sync_pull(self) -> dict[str, Any]:
+        s = self.get_settings()
+        token = (s.get("gist_token") or "").strip()
+        if not token:
+            raise ValueError("Укажите GitHub Token в настройках синхронизации.")
+        gist_id = (s.get("gist_id") or "").strip() or self._find_fintrack_gist(token)
+        if not gist_id:
+            raise ValueError("Облачный бэкап FinTrack (fintrack-backup.json) не найден. Сначала выгрузите данные с одного из устройств.")
+        res = self._gist_request("GET", f"https://api.github.com/gists/{gist_id}", token)
+        file_obj = (res.get("files") or {}).get("fintrack-backup.json")
+        if not file_obj or "content" not in file_obj:
+            raise ValueError("В указанном Gist отсутствует файл fintrack-backup.json.")
+        payload = json.loads(file_obj["content"])
+        stats = self.import_json(payload)
+        self.update_settings({"gist_id": gist_id})
+        return {"gist_id": gist_id, "imported": stats, "updated_at": res.get("updated_at")}
+
 
 def make_handler(db: FinanceDB, static_dir: Path):
     class FinanceHandler(BaseHTTPRequestHandler):
@@ -877,6 +952,10 @@ def make_handler(db: FinanceDB, static_dir: Path):
                 elif path == "/api/reset":
                     db.reset_all()
                     self._send_json(200, {"ok": True})
+                elif path == "/api/sync/push":
+                    self._send_json(200, db.sync_push())
+                elif path == "/api/sync/pull":
+                    self._send_json(200, db.sync_pull())
                 else:
                     self._send_error_json(404, "Маршрут не найден.")
             except ValueError as exc:
