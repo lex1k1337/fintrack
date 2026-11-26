@@ -270,13 +270,14 @@
   }
 
   async function gistRequest(method, url, token, payload) {
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+    };
+    if (payload) headers["Content-Type"] = "application/json";
     const res = await fetch(url, {
       method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-      },
+      headers,
       body: payload ? JSON.stringify(payload) : undefined,
     });
     const data = await res.json().catch(() => ({}));

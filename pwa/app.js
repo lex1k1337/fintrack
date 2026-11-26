@@ -858,6 +858,13 @@ function initEvents() {
     }
   }
 
+  const setSyncStatus = (msg, isError = false) => {
+    const el = $("syncStatus");
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = isError ? "var(--expense)" : "var(--text-muted)";
+  };
+
   $("btnSyncSave").addEventListener("click", async () => {
     try {
       await api("/api/settings", {
@@ -868,9 +875,11 @@ function initEvents() {
           gist_autosync: $("settingGistAutosync").checked ? "true" : "false",
         }),
       });
+      setSyncStatus("Настройки сохранены.");
       toast("Настройки синхронизации сохранены", "success");
       await refreshAll();
     } catch (err) {
+      setSyncStatus(err.message, true);
       toast(err.message, "error");
     }
   });
@@ -885,12 +894,15 @@ function initEvents() {
           gist_autosync: $("settingGistAutosync").checked ? "true" : "false",
         }),
       });
+      setSyncStatus("Выгрузка в облако...");
       toast("Выгрузка в облако...", "info");
       const res = await api("/api/sync/push", { method: "POST" });
+      setSyncStatus(`Выгружено в Gist (${res.gist_id})`);
       toast("Успешно выгружено в GitHub Gist", "success");
       if (res.gist_id) $("settingGistId").value = res.gist_id;
       await refreshAll();
     } catch (err) {
+      setSyncStatus(`Ошибка: ${err.message}`, true);
       toast(err.message, "error");
     }
   });
@@ -905,11 +917,14 @@ function initEvents() {
           gist_autosync: $("settingGistAutosync").checked ? "true" : "false",
         }),
       });
+      setSyncStatus("Загрузка из облака...");
       toast("Загрузка из облака...", "info");
       const res = await api("/api/sync/pull", { method: "POST" });
+      setSyncStatus(`Загружено операций: ${res.imported.transactions}`);
       toast(`Загружено операций: ${res.imported.transactions}`, "success");
       await refreshAll();
     } catch (err) {
+      setSyncStatus(`Ошибка: ${err.message}`, true);
       toast(err.message, "error");
     }
   });

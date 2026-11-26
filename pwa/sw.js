@@ -1,4 +1,4 @@
-const CACHE_NAME = "fintrack-pwa-v2";
+const CACHE_NAME = "fintrack-pwa-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -27,7 +27,19 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    fetch(event.request)
+      .then((resp) => {
+        if (resp && resp.status === 200) {
+          const copy = resp.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return resp;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
